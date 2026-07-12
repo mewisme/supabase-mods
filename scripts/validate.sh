@@ -24,6 +24,7 @@ required_files=(
   "$ROOT/scripts/build-all.sh"
   "$ROOT/scripts/install-all.sh"
   "$ROOT/scripts/register-privileged.sh"
+  "$ROOT/scripts/register-preload.sh"
   "$ROOT/scripts/validate.sh"
   "$ROOT/scripts/test.sh"
   "$ROOT/.github/workflows/docker.yml"

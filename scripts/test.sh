@@ -132,6 +132,33 @@ for i in 1 2 3 4 5; do
 done
 log "timestamp ordering OK"
 
+log "CREATE EXTENSION pg_permissions"
+run_sql "CREATE EXTENSION pg_permissions;"
+perm_n="$(run_sql "SELECT count(*) FROM all_permissions;" | tr -d '[:space:]')"
+[[ "$perm_n" =~ ^[0-9]+$ ]] || die "all_permissions failed: $perm_n"
+log "pg_permissions OK (all_permissions rows=$perm_n)"
+
+log "CREATE EXTENSION pg_wait_sampling"
+run_sql "CREATE EXTENSION pg_wait_sampling;"
+wait_n="$(run_sql "SELECT count(*) FROM pg_wait_sampling_current;" | tr -d '[:space:]')"
+[[ "$wait_n" =~ ^[0-9]+$ ]] || die "pg_wait_sampling_current failed: $wait_n"
+log "pg_wait_sampling OK (current rows=$wait_n)"
+
+log "CREATE EXTENSION pg_stat_statements + pg_stat_kcache"
+run_sql "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+run_sql "CREATE EXTENSION pg_stat_kcache;"
+kcache_n="$(run_sql "SELECT count(*) FROM pg_stat_kcache;" | tr -d '[:space:]')"
+[[ "$kcache_n" =~ ^[0-9]+$ ]] || die "pg_stat_kcache failed: $kcache_n"
+log "pg_stat_kcache OK (rows=$kcache_n)"
+
+log "CREATE EXTENSION pg_ivm"
+run_sql "CREATE EXTENSION pg_ivm;"
+run_sql "SELECT pgivm.create_immv('public.immv_smoke', 'SELECT 1 AS x');"
+immv_n="$(run_sql "SELECT count(*) FROM public.immv_smoke;" | tr -d '[:space:]')"
+[[ "$immv_n" == "1" ]] || die "immv_smoke expected 1 row, got $immv_n"
+run_sql "DROP TABLE public.immv_smoke;"
+log "pg_ivm OK"
+
 log "restart container"
 docker restart "$DB_CID" >/dev/null
 wait_healthy
@@ -141,6 +168,10 @@ uuid2="$(run_sql "SELECT uuid_generate_v7();" | tr -d '[:space:]')"
 [[ "$uuid2" =~ ^[0-9a-fA-F-]{36}$ ]] || die "post-restart uuid failed: $uuid2"
 ver2="$(printf '%s' "$uuid2" | cut -d- -f3 | cut -c1)"
 [[ "$ver2" == "7" ]] || die "post-restart version not 7"
+
+log "preload extensions still queryable after restart"
+run_sql "SELECT count(*) FROM pg_wait_sampling_current;" >/dev/null
+run_sql "SELECT count(*) FROM pg_stat_kcache;" >/dev/null
 
 log "scan logs for FATAL/PANIC"
 docker logs "$DB_CID" >"${LOG_DIR}/postgres.log" 2>&1 || true

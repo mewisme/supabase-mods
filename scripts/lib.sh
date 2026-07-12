@@ -36,7 +36,7 @@ load_versions() {
   export POSTGRES_IMAGE POSTGRES_VERSION POSTGRES_MAJOR
   export POSTGRES_SRC_VERSION POSTGRES_SRC_URL POSTGRES_SRC_SHA256
   export GLIBC_BUILDER_IMAGE
-  export IMAGE_NAME MODS_LIBDIR MODS_PROFILE_OVERLAY SUPAUTILS_CONF
+  export IMAGE_NAME MODS_LIBDIR MODS_PROFILE_OVERLAY SUPAUTILS_CONF POSTGRES_CONF
 }
 
 # Print discovered Postgres majors (from Dockerfile.N), one per line, sorted.
@@ -216,13 +216,25 @@ install_shared_object() {
 }
 
 # Install control + SQL scripts into materialized SHAREDIR/extension.
+# SQL that hardcodes '$libdir/...' (instead of MODULE_PATHNAME) is rewritten
+# to MODS_LIBDIR so CREATE FUNCTION can find our staged .so files.
 install_extension_files() {
-  local ext_dir control_src
+  load_versions
+  local ext_dir
   ext_dir="$(materialize_extension_dir)"
-  local f
+  local f dest tmp
   for f in "$@"; do
     [[ -f "$f" ]] || die "missing extension file: $f"
-    install -m 0644 "$f" "$ext_dir/$(basename "$f")"
+    dest="${ext_dir}/$(basename "$f")"
+    if [[ "$f" == *.sql ]]; then
+      tmp="$(mktemp)"
+      # Escape for sed: $libdir/foo -> /opt/.../foo
+      sed "s|\\\$libdir/|${MODS_LIBDIR}/|g" "$f" >"$tmp"
+      install -m 0644 "$tmp" "$dest"
+      rm -f "$tmp"
+    else
+      install -m 0644 "$f" "$dest"
+    fi
     log "installed $(basename "$f") -> $ext_dir"
   done
 }
@@ -248,5 +260,34 @@ append_privileged_extension() {
   else
     printf "supautils.privileged_extensions = '%s'\n" "$name" >>"$conf"
     log "created privileged_extensions with $name"
+  fi
+}
+
+# Append a library to shared_preload_libraries in POSTGRES_CONF (idempotent).
+# Prefer absolute paths under MODS_LIBDIR so Nix $libdir stays untouched.
+# Arg: library entry (basename or absolute path without .so).
+append_shared_preload_library() {
+  load_versions
+  local entry="$1"
+  local conf="${POSTGRES_CONF:-/etc/postgresql/postgresql.conf}"
+  [[ -f "$conf" ]] || die "postgresql.conf not found: $conf"
+  [[ -n "$entry" ]] || die "append_shared_preload_library: empty entry"
+
+  # Match bare name or already-absolute path (basename of entry).
+  local bare
+  bare="$(basename "$entry")"
+  if grep -Eq "shared_preload_libraries *= *'[^']*(^|[, ])${bare}([, ']|$)" "$conf" \
+    || grep -Fq "$entry" "$conf"; then
+    log "shared_preload_libraries already contains $entry"
+    return 0
+  fi
+
+  if grep -q "^[[:space:]]*shared_preload_libraries[[:space:]]*=" "$conf"; then
+    sed -i -E "s|^([[:space:]]*shared_preload_libraries[[:space:]]*=[[:space:]]*')([^']*)('.*)|\1\2, ${entry}\3|" "$conf" \
+      || die "failed to append $entry to shared_preload_libraries"
+    log "appended $entry to shared_preload_libraries"
+  else
+    printf "shared_preload_libraries = '%s'\n" "$entry" >>"$conf"
+    log "created shared_preload_libraries with $entry"
   fi
 }

@@ -19,6 +19,8 @@ EXT_ENABLED=true
 SOURCE_URL=https://github.com/org/my_ext/archive/refs/tags/v1.2.3.tar.gz
 SOURCE_SHA256=<64 hex chars>
 PRIVILEGED=true
+SHARED_PRELOAD=false
+# PRELOAD_NAME=my_ext   # optional; defaults to EXT_NAME when SHARED_PRELOAD=true
 LICENSE=MIT
 HOMEPAGE=https://github.com/org/my_ext
 ```
@@ -28,6 +30,9 @@ HOMEPAGE=https://github.com/org/my_ext
 | `EXT_ENABLED` | Discovery gate |
 | `SOURCE_*` | Deterministic fetch |
 | `PRIVILEGED` | Append to `supautils.privileged_extensions` when true |
+| `SHARED_PRELOAD` | Append absolute `$MODS_LIBDIR/<name>` to `shared_preload_libraries` when true |
+
+**Skip if already in the Supabase base image** (e.g. `pg_hashids`, `safeupdate`, `pg_partman`). Confirm with `pg_available_extensions` on the pinned base tag before adding a package.
 
 ## `build.sh`
 
@@ -37,6 +42,7 @@ Contract:
 - Source `scripts/lib.sh` and `metadata.env`
 - Honor `$STAGING_DIR`
 - Download + verify, compile with image `pg_config`, copy `.so` / `.control` / `*.sql` into `$STAGING_DIR`
+- SQL-only extensions may skip compilation and stage control + SQL only
 
 Use helpers: `download_and_verify`, `ensure_server_headers`.
 
@@ -45,9 +51,9 @@ Use helpers: `download_and_verify`, `ensure_server_headers`.
 Contract:
 
 - Read artifacts from `$STAGING_DIR`
-- Call `install_shared_object` and `install_extension_files`
+- Call `install_shared_object` (if there is a `.so`) and `install_extension_files`
 
-Privileged registration is global (`register-privileged.sh`); do not duplicate it unless you have a special case.
+Privileged / preload registration is global (`register-privileged.sh`, `register-preload.sh`); do not duplicate it unless you have a special case.
 
 ## Testing
 

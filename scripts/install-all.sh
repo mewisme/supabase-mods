@@ -25,5 +25,6 @@ for dir in "${EXTS[@]}"; do
 done
 
 bash "${SCRIPT_DIR}/register-privileged.sh"
+bash "${SCRIPT_DIR}/register-preload.sh"
 
 log "all extensions installed"

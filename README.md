@@ -14,7 +14,7 @@ PostgreSQL extension distribution built on pinned [Supabase Postgres](https://gi
 
 Supabase Postgres ships many extensions, but not every useful extension. Native PostgreSQL extensions are ABI-sensitive: they must be compiled against the same PostgreSQL build (and libc) as the server.
 
-Self-hosters who need extras (starting with `pg_uuidv7`) should not reinvent fragile Dockerfiles per extension. This repo provides:
+Self-hosters who need extras (starting with `pg_uuidv7`, plus permissions / sampling / IVM packs) should not reinvent fragile Dockerfiles per extension. This repo provides:
 
 - a reusable extension package layout
 - ABI-safe builds against the exact upstream image
@@ -48,7 +48,7 @@ See [docs/architecture.md](docs/architecture.md) for ABI and Nix path details.
 | Major track | `17` ([`Dockerfile.17`](Dockerfile.17)) |
 | Supabase Postgres image | `17.6.1.143` ([`versions/17.env`](versions/17.env)) |
 | PostgreSQL | 17.6 (as shipped by upstream) |
-| First bundled extension | `pg_uuidv7` 1.7.0 |
+| First bundled extension | `pg_uuidv7` 1.7.0 (+ permissions, wait_sampling, kcache, ivm) |
 
 Shared defaults: [`versions.env`](versions.env). Per-major pins: `versions/<MAJOR>.env`. Never use `latest` or `*-multigres` as the **base** image.
 
@@ -63,9 +63,15 @@ When Supabase ships a PG18 image:
 
 ## Bundled extensions
 
-| Extension | Version | Source | Privileged |
-| --- | --- | --- | --- |
-| [pg_uuidv7](https://github.com/fboulnois/pg_uuidv7) | 1.7.0 | GitHub release tag (source tarball + SHA256) | yes |
+| Extension | Version | Source | Privileged | Notes |
+| --- | --- | --- | --- | --- |
+| [pg_uuidv7](https://github.com/fboulnois/pg_uuidv7) | 1.7.0 | GitHub release tag | yes | |
+| [pg_permissions](https://github.com/cybertec-postgresql/pg_permissions) | 1.4.1 | GitHub tag `REL_1_4_1` | yes | SQL-only |
+| [pg_wait_sampling](https://github.com/postgrespro/pg_wait_sampling) | 1.1.10 | GitHub tag `v1.1.10` | yes | `shared_preload_libraries` |
+| [pg_stat_kcache](https://github.com/powa-team/pg_stat_kcache) | 2.3.2 | GitHub tag `REL2_3_2` | yes | `shared_preload_libraries`; needs `pg_stat_statements` |
+| [pg_ivm](https://github.com/sraoss/pg_ivm) | 1.15 | GitHub tag `v1.15` | yes | |
+
+Already in the Supabase base image (not rebuilt here): `pg_hashids`, `safeupdate` (`pg_safeupdate`), `pg_partman`.
 
 License note: `pg_uuidv7` is MPL-2.0; this repository is MIT.
 
