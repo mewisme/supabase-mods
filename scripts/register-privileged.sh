@@ -8,7 +8,7 @@ source "${SCRIPT_DIR}/lib.sh"
 
 load_versions
 
-mapfile -t EXTS < <("${SCRIPT_DIR}/discover.sh")
+mapfile -t EXTS < <(bash "${SCRIPT_DIR}/discover.sh")
 for dir in "${EXTS[@]}"; do
   PRIVILEGED=false
   # shellcheck disable=SC1090

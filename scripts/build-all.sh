@@ -15,7 +15,7 @@ mkdir -p "$STAGING_ROOT"
 abi_probe
 ensure_server_headers
 
-mapfile -t EXTS < <("${SCRIPT_DIR}/discover.sh")
+mapfile -t EXTS < <(bash "${SCRIPT_DIR}/discover.sh")
 [[ ${#EXTS[@]} -gt 0 ]] || die "no enabled extensions found"
 
 for dir in "${EXTS[@]}"; do

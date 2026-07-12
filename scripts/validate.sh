@@ -64,7 +64,7 @@ for major in "${MAJORS[@]}"; do
 done
 
 # Every enabled extension must have the contract files.
-mapfile -t EXTS < <("${SCRIPT_DIR}/discover.sh")
+mapfile -t EXTS < <(bash "${SCRIPT_DIR}/discover.sh")
 [[ ${#EXTS[@]} -gt 0 ]] || { warn "no enabled extensions"; fail=1; }
 
 for dir in "${EXTS[@]}"; do

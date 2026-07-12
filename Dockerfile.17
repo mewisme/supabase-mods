@@ -52,7 +52,7 @@ RUN chmod +x /src/scripts/*.sh /src/extensions/*/build.sh /src/extensions/*/inst
  && export CPPFLAGS="${PG_CPPFLAGS}" \
  && export CFLAGS="${CFLAGS:--O2} ${PG_CPPFLAGS}" \
  && export ABI_MAJOR_ONLY=1 \
- && STAGING_ROOT=/staging /src/scripts/build-all.sh
+ && STAGING_ROOT=/staging bash /src/scripts/build-all.sh
 
 ############################
 # Runtime — upstream behavior + staged extension artifacts only
@@ -89,7 +89,7 @@ COPY --from=builder /staging /staging
 RUN chmod +x /opt/supabase-mods/scripts/*.sh \
       /opt/supabase-mods/extensions/*/build.sh \
       /opt/supabase-mods/extensions/*/install.sh \
- && STAGING_ROOT=/staging /opt/supabase-mods/scripts/install-all.sh \
+ && STAGING_ROOT=/staging bash /opt/supabase-mods/scripts/install-all.sh \
  && rm -rf /staging
 
 # Preserve upstream ENTRYPOINT, CMD, USER, and healthcheck from the base image.

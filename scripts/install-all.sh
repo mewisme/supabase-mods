@@ -11,7 +11,7 @@ load_versions
 STAGING_ROOT="${STAGING_ROOT:-/staging}"
 [[ -d "$STAGING_ROOT" ]] || die "staging root missing: $STAGING_ROOT"
 
-mapfile -t EXTS < <("${SCRIPT_DIR}/discover.sh")
+mapfile -t EXTS < <(bash "${SCRIPT_DIR}/discover.sh")
 [[ ${#EXTS[@]} -gt 0 ]] || die "no enabled extensions found"
 
 for dir in "${EXTS[@]}"; do
@@ -24,6 +24,6 @@ for dir in "${EXTS[@]}"; do
   bash "${dir}/install.sh"
 done
 
-"${SCRIPT_DIR}/register-privileged.sh"
+bash "${SCRIPT_DIR}/register-privileged.sh"
 
 log "all extensions installed"
