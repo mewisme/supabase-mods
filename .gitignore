@@ -1,0 +1,27 @@
+# Local / OS
+.env
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Build / test artifacts
+/staging/
+/tmp/
+/test-output/
+/tmp-glibc/
+*.tar.gz
+*.tar.bz2
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Docker
+docker-compose.override.yml
+
+# Cursor
+.cursor/
+

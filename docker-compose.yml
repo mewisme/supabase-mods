@@ -1,0 +1,41 @@
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.${POSTGRES_MAJOR:-17}
+      args:
+        POSTGRES_IMAGE: ${POSTGRES_IMAGE:-supabase/postgres:17.6.1.143}
+        POSTGRES_VERSION: ${POSTGRES_VERSION:-17.6.1.143}
+        POSTGRES_MAJOR: ${POSTGRES_MAJOR:-17}
+        GLIBC_BUILDER_IMAGE: ${GLIBC_BUILDER_IMAGE:-postgres:17.6-bookworm}
+    image: ${IMAGE_NAME:-mewisme/supabase-mods}:${IMAGE_TAG:-latest}
+    container_name: supabase-mods-db
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      # Upstream default bootstrap user is supabase_admin; override only if needed.
+      POSTGRES_USER: ${POSTGRES_USER:-supabase_admin}
+      # Comma-separated extra DBs created on first init (empty volume only).
+      # Example: app,analytics  — POSTGRES_DB is always created by the entrypoint.
+      POSTGRES_DATABASES: ${POSTGRES_DATABASES:-}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Env-based DBs: POSTGRES_DATABASES=app,analytics
+      - ./scripts/compose/init-multiple-databases.sh:/docker-entrypoint-initdb.d/zz-multiple-databases.sh:ro
+      # SQL-based init: put *.sql in scripts/compose/sql/ (see 01-databases.sql.example)
+      - ./scripts/compose/run-sql-init.sh:/docker-entrypoint-initdb.d/zz-run-sql-init.sh:ro
+      - ./scripts/compose/sql:/opt/supabase-mods-init/sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  pgdata:

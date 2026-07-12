@@ -1,0 +1,96 @@
+# syntax=docker/dockerfile:1.7
+
+# Track: PostgreSQL / Supabase major 17
+# When Supabase ships PG18, add Dockerfile.18 + versions/18.env.
+# CI discovers Dockerfile.[0-9]+; `latest` follows the highest major.
+#
+# supabase-mods — modular PostgreSQL extensions on pinned Supabase Postgres.
+#
+# Critical: supabase/postgres:17.6.1.143 ships Nix-built PostgreSQL linked against
+# glibc, even though the outer image is Alpine. Extensions MUST be compiled with a
+# glibc toolchain. Alpine/musl builds will not load into the server process.
+
+ARG POSTGRES_IMAGE=supabase/postgres:17.6.1.143
+ARG GLIBC_BUILDER_IMAGE=postgres:17.6-bookworm
+
+############################
+# ABI reference — exact upstream image (headers / version probe)
+############################
+FROM ${POSTGRES_IMAGE} AS abi
+
+############################
+# Builder — glibc compile via PGXS (same PG major as upstream)
+############################
+FROM ${GLIBC_BUILDER_IMAGE} AS builder
+
+USER root
+
+ARG POSTGRES_MAJOR=17
+ENV POSTGRES_MAJOR=${POSTGRES_MAJOR}
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      build-essential \
+      ca-certificates \
+      curl \
+      postgresql-server-dev-17 \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+COPY versions.env /src/versions.env
+COPY versions/ /src/versions/
+COPY scripts/ /src/scripts/
+COPY extensions/ /src/extensions/
+
+# Prefer upstream server headers when present (exact catalog/ABI types).
+COPY --from=abi /nix/var/nix/profiles/default/include /opt/supabase-abi/include
+
+RUN chmod +x /src/scripts/*.sh /src/extensions/*/build.sh /src/extensions/*/install.sh \
+ && mkdir -p /staging \
+ && export PG_CPPFLAGS="-I/opt/supabase-abi/include/server" \
+ && export CPPFLAGS="${PG_CPPFLAGS}" \
+ && export CFLAGS="${CFLAGS:--O2} ${PG_CPPFLAGS}" \
+ && export ABI_MAJOR_ONLY=1 \
+ && STAGING_ROOT=/staging /src/scripts/build-all.sh
+
+############################
+# Runtime — upstream behavior + staged extension artifacts only
+############################
+FROM ${POSTGRES_IMAGE} AS runtime
+
+ARG POSTGRES_IMAGE=supabase/postgres:17.6.1.143
+ARG POSTGRES_VERSION=17.6.1.143
+ARG POSTGRES_MAJOR=17
+ARG VERSION=dev
+ARG VCS_REF=unknown
+ARG BUILD_DATE=unknown
+
+ENV POSTGRES_MAJOR=${POSTGRES_MAJOR}
+
+LABEL org.opencontainers.image.title="supabase-mods" \
+      org.opencontainers.image.description="PostgreSQL extension distribution built on Supabase Postgres" \
+      org.opencontainers.image.source="https://github.com/mewisme/supabase-mods" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.base.name="${POSTGRES_IMAGE}" \
+      org.opencontainers.image.base.version="${POSTGRES_VERSION}"
+
+USER root
+
+COPY versions.env /opt/supabase-mods/versions.env
+COPY versions/ /opt/supabase-mods/versions/
+COPY scripts/ /opt/supabase-mods/scripts/
+COPY extensions/ /opt/supabase-mods/extensions/
+COPY --from=builder /staging /staging
+
+RUN chmod +x /opt/supabase-mods/scripts/*.sh \
+      /opt/supabase-mods/extensions/*/build.sh \
+      /opt/supabase-mods/extensions/*/install.sh \
+ && STAGING_ROOT=/staging /opt/supabase-mods/scripts/install-all.sh \
+ && rm -rf /staging
+
+# Preserve upstream ENTRYPOINT, CMD, USER, and healthcheck from the base image.
+# Do not redefine them.

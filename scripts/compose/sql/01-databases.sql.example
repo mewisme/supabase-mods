@@ -1,0 +1,7 @@
+-- Example: copy to 01-databases.sql (or any *.sql) to run on first init.
+-- Runs as POSTGRES_USER against POSTGRES_DB (default: supabase_admin / postgres).
+--
+-- CREATE DATABASE only runs once (empty pgdata). Re-init: docker compose down -v.
+
+CREATE DATABASE app OWNER supabase_admin;
+CREATE DATABASE analytics OWNER supabase_admin;

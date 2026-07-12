@@ -1,0 +1,212 @@
+name: Docker
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: mewisme/supabase-mods
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Static validation
+        run: bash scripts/validate.sh
+
+  discover:
+    name: Discover majors
+    runs-on: ubuntu-latest
+    needs: validate
+    outputs:
+      majors: ${{ steps.set.outputs.majors }}
+      default_matrix: ${{ steps.set.outputs.default_matrix }}
+      latest_major: ${{ steps.set.outputs.latest_major }}
+      default_major: ${{ steps.set.outputs.default_major }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: set
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t majors < <(bash scripts/discover-majors.sh)
+          [[ ${#majors[@]} -gt 0 ]] || { echo "no Dockerfile.[0-9]+ found"; exit 1; }
+          latest="${majors[-1]}"
+          # shellcheck disable=SC1091
+          source versions.env
+          default="${DEFAULT_MAJOR:-$latest}"
+          json="$(printf '%s\n' "${majors[@]}" | jq -R . | jq -sc .)"
+          default_json="$(jq -cn --arg m "$default" '[$m]')"
+          echo "majors=$json" >> "$GITHUB_OUTPUT"
+          echo "default_matrix=$default_json" >> "$GITHUB_OUTPUT"
+          echo "latest_major=$latest" >> "$GITHUB_OUTPUT"
+          echo "default_major=$default" >> "$GITHUB_OUTPUT"
+          echo "Discovered majors=$json latest=$latest default=$default"
+
+  build-test:
+    name: Build and test (${{ matrix.major }})
+    runs-on: ubuntu-latest
+    needs: discover
+    strategy:
+      fail-fast: true
+      matrix:
+        # PRs: default major only. Push/tag/dispatch: all majors.
+        major: ${{ fromJSON(github.event_name == 'pull_request' && needs.discover.outputs.default_matrix || needs.discover.outputs.majors) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Load major pins
+        id: pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          source versions.env
+          # shellcheck disable=SC1090
+          source "versions/${{ matrix.major }}.env"
+          {
+            echo "POSTGRES_IMAGE=$POSTGRES_IMAGE"
+            echo "POSTGRES_VERSION=$POSTGRES_VERSION"
+            echo "GLIBC_BUILDER_IMAGE=$GLIBC_BUILDER_IMAGE"
+            echo "POSTGRES_MAJOR=$POSTGRES_MAJOR"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Prepare env
+        run: |
+          cp .env.example .env
+          sed -i 's/^POSTGRES_MAJOR=.*/POSTGRES_MAJOR=${{ matrix.major }}/' .env
+
+      - name: Build (local load, runner arch) for tests
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.${{ matrix.major }}
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha,scope=pg${{ matrix.major }}
+          cache-to: type=gha,mode=max,scope=pg${{ matrix.major }}
+          build-args: |
+            POSTGRES_IMAGE=${{ steps.pins.outputs.POSTGRES_IMAGE }}
+            POSTGRES_VERSION=${{ steps.pins.outputs.POSTGRES_VERSION }}
+            POSTGRES_MAJOR=${{ steps.pins.outputs.POSTGRES_MAJOR }}
+            GLIBC_BUILDER_IMAGE=${{ steps.pins.outputs.GLIBC_BUILDER_IMAGE }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+            VERSION=${{ github.ref_name }}
+
+      - name: Run automated tests
+        run: bash scripts/test.sh
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          POSTGRES_MAJOR: ${{ matrix.major }}
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-logs-${{ matrix.major }}
+          path: |
+            test-output/
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish (${{ matrix.major }})
+    runs-on: ubuntu-latest
+    needs: [discover, build-test]
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    strategy:
+      fail-fast: true
+      matrix:
+        major: ${{ fromJSON(needs.discover.outputs.majors) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Load major pins
+        id: pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          source versions.env
+          # shellcheck disable=SC1090
+          source "versions/${{ matrix.major }}.env"
+          {
+            echo "POSTGRES_IMAGE=$POSTGRES_IMAGE"
+            echo "POSTGRES_VERSION=$POSTGRES_VERSION"
+            echo "GLIBC_BUILDER_IMAGE=$GLIBC_BUILDER_IMAGE"
+            echo "POSTGRES_MAJOR=$POSTGRES_MAJOR"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ matrix.major }}
+            type=raw,value=${{ steps.pins.outputs.POSTGRES_VERSION }}
+            type=raw,value=${{ steps.pins.outputs.POSTGRES_VERSION }}-uuidv7
+            type=raw,value=${{ matrix.major }}-b${{ github.run_number }}
+            type=raw,value=latest,enable=${{ matrix.major == needs.discover.outputs.latest_major && github.ref == 'refs/heads/main' }}
+            type=ref,event=tag,enable=${{ matrix.major == needs.discover.outputs.latest_major }}
+          labels: |
+            org.opencontainers.image.title=supabase-mods
+            org.opencontainers.image.description=PostgreSQL extension distribution built on Supabase Postgres (major ${{ matrix.major }})
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.${{ matrix.major }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=pg${{ matrix.major }}
+          cache-to: type=gha,mode=max,scope=pg${{ matrix.major }}
+          build-args: |
+            POSTGRES_IMAGE=${{ steps.pins.outputs.POSTGRES_IMAGE }}
+            POSTGRES_VERSION=${{ steps.pins.outputs.POSTGRES_VERSION }}
+            POSTGRES_MAJOR=${{ steps.pins.outputs.POSTGRES_MAJOR }}
+            GLIBC_BUILDER_IMAGE=${{ steps.pins.outputs.GLIBC_BUILDER_IMAGE }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+            VERSION=${{ github.ref_name }}
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: publish-logs-${{ matrix.major }}
+          path: |
+            test-output/
+          if-no-files-found: ignore
