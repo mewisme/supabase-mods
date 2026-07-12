@@ -172,7 +172,6 @@ jobs:
           tags: |
             type=raw,value=${{ matrix.major }}
             type=raw,value=${{ steps.pins.outputs.POSTGRES_VERSION }}
-            type=raw,value=${{ steps.pins.outputs.POSTGRES_VERSION }}-uuidv7
             type=raw,value=${{ matrix.major }}-b${{ github.run_number }}
             type=raw,value=latest,enable=${{ matrix.major == needs.discover.outputs.latest_major && github.ref == 'refs/heads/main' }}
             type=ref,event=tag,enable=${{ matrix.major == needs.discover.outputs.latest_major }}

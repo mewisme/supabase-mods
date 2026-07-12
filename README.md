@@ -120,7 +120,6 @@ docker compose up -d
 | --- | --- |
 | `17` | Floating major track |
 | `17.6.1.143` | Exact upstream pin |
-| `17.6.1.143-uuidv7` | Extension-flavored alias |
 | `17-b<N>` | Auto-increasing build id (`github.run_number`) for major 17 |
 | `latest` | Highest major track on `main` (today `17`; becomes `18` when `Dockerfile.18` exists) |
 | `vX.Y.Z` | Git version tags (applied to the highest major) |

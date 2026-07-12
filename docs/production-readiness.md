@@ -46,7 +46,7 @@ abi (supabase) --headers--> builder (glibc) --/staging--> runtime (supabase)
 
 - Validate → discover majors → build/test → publish (main/tags only).
 - Multi-arch publish: `linux/amd64`, `linux/arm64`.
-- Per-major tags: `17`, `17.6.1.143`, `17.6.1.143-uuidv7`, `17-b{run_number}`, `latest` (max major on main), git tags.
+- Per-major tags: `17`, `17.6.1.143`, `17-b{run_number}`, `latest` (max major on main), git tags.
 - Failure artifacts for logs.
 
 ## Docker review
