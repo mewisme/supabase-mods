@@ -176,7 +176,10 @@ run_sql "SELECT count(*) FROM pg_stat_kcache;" >/dev/null
 log "scan logs for FATAL/PANIC"
 docker logs "$DB_CID" >"${LOG_DIR}/postgres.log" 2>&1 || true
 # Filter known benign noise; fail on unexpected FATAL/PANIC.
-if grep -E 'FATAL:|PANIC:' "${LOG_DIR}/postgres.log" | grep -Ev 'role ".*" does not exist|password authentication failed|the database system is starting up|database system is shutting down' >/tmp/pg-fatal.txt; then
+# Restart terminates preload BGWs (e.g. pg_wait_sampling collector) with FATAL.
+if grep -E 'FATAL:|PANIC:' "${LOG_DIR}/postgres.log" \
+  | grep -Ev 'role ".*" does not exist|password authentication failed|the database system is starting up|database system is shutting down|terminating background worker .* due to administrator command' \
+  >/tmp/pg-fatal.txt; then
   if [[ -s /tmp/pg-fatal.txt ]]; then
     cat /tmp/pg-fatal.txt | tee -a "$TEST_LOG"
     die "unexpected FATAL/PANIC in postgres logs"
