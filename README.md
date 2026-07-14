@@ -121,7 +121,7 @@ docker compose up -d
 | `17` | Floating major track |
 | `17.6.1.143` | Exact upstream pin |
 | `17-b<N>` | Auto-increasing build id (`github.run_number`) for major 17 |
-| `latest` | Highest major track on `main` (today `17`; becomes `18` when `Dockerfile.18` exists) |
+| `latest` | Highest major track on the latest `v*` publish (today `17`; becomes `18` when `Dockerfile.18` exists) |
 | `vX.Y.Z` | Git version tags (applied to the highest major) |
 
 ## Enabling extensions
@@ -176,15 +176,16 @@ Tests verify: image build, healthy start, `CREATE EXTENSION`, idempotency, UUID 
 GitHub Actions (`.github/workflows/docker.yml`):
 
 - Discovers `Dockerfile.[0-9]+` majors automatically
-- Triggers: `push`, `pull_request`, `workflow_dispatch`, version tags `v*`
+- Triggers: `push` to `main`, `pull_request`, `workflow_dispatch`, version tags `v*`
 - PRs: validate + build/test **default major** only
-- `main` / tags: build all majors, multi-arch publish
-- Tags: `N`, pin, `N-b<run>`, `latest` (max major on main)
+- `main` / dispatch: validate + build/test (no publish)
+- `v*` tags: build/test all majors, then multi-arch publish
+- Published tags: `N`, pin, `N-b<run>`, `latest` (max major), git tag
 
 ## Release strategy
 
-1. Land changes on `main` → tags `17`, `17.6.1.143`, `17-b*`, `latest`.
-2. Cut a git tag `vX.Y.Z` for a versioned release (highest major).
+1. Land changes on `main` → CI runs build/test only.
+2. Cut a git tag `vX.Y.Z` to publish (`17`, `17.6.1.143`, `17-b*`, `latest`, `vX.Y.Z`).
 3. Bump pins in `versions/17.env` when upstream releases a new 17.x image.
 
 ## Upgrade strategy
